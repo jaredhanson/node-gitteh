@@ -32,7 +32,7 @@ def configure_libgit2(ctx):
 					ctx.fatal("Couldn't initialize libgit2 submodule.")
 		
 		print "Configuring libgit2..."
-		command = "./waf configure"
+		command = "mkdir build && cd build; cmake .."
 		
 		if(o.debug):
 			command = command + " --debug"
@@ -40,9 +40,9 @@ def configure_libgit2(ctx):
 		if Popen(command, shell = True, cwd = "vendor/libgit2").wait() != 0:
 			ctx.fatal("Libgit2 failed to configure.")
 
-		ctx.env.LIBPATH_GIT2 = abspath("vendor/libgit2/build/shared")
+		ctx.env.LIBPATH_GIT2 = abspath("vendor/libgit2/build")
 		ctx.env.LIB_GIT2 = "git2"
-		ctx.env.RPATH_GIT2 = abspath("vendor/libgit2/build/shared")
+		ctx.env.RPATH_GIT2 = abspath("vendor/libgit2/build")
 		ctx.env.internalLibgit2 = True
 
 		ctx.env.append_value("CPPPATH_GIT2", [abspath("vendor/libgit2/include")])
@@ -51,7 +51,7 @@ def configure_libgit2(ctx):
 		ctx.env.internalLibgit2 = False
 
 def build_libgit2(bld):
-	if Popen("./waf build", cwd = "vendor/libgit2", shell = True).wait() != 0:
+	if Popen("cd build; cmake --build .", cwd = "vendor/libgit2", shell = True).wait() != 0:
 		# TODO: is there some way of crashing out with an error message from build
 		# context?
 		#bld.fatal("Errors building libgit2.") 

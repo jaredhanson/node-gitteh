@@ -1186,7 +1186,7 @@ Handle<Value> Repository::CreateSymbolicRef(const Arguments& args) {
 		repo->lockRefs();
 
 		git_reference *ref;
-		int res = git_reference_create_symbolic(&ref, repo->repo_, *nameArg, *targetArg);
+		int res = git_reference_create_symbolic(&ref, repo->repo_, *nameArg, *targetArg, 0);
 
 		if(res != GIT_SUCCESS) {
 			repo->unlockRefs();
@@ -1207,7 +1207,7 @@ void Repository::EIO_CreateSymbolicRef(eio_req *req) {
 
 	reqData->repo->lockRepository();
 	reqData->error = git_reference_create_symbolic(&ref, reqData->repo->repo_,
-			reqData->name->c_str(), reqData->target->c_str());
+			reqData->name->c_str(), reqData->target->c_str(), 0);
 	reqData->repo->unlockRepository();
 
 	if(reqData->error == GIT_SUCCESS) {
@@ -1252,7 +1252,7 @@ Handle<Value> Repository::CreateOidRef(const Arguments& args) {
 
 		git_reference *ref;
 		repo->lockRepository();
-		int res = git_reference_create_oid(&ref, repo->repo_, *nameArg, &oidArg);
+		int res = git_reference_create_oid(&ref, repo->repo_, *nameArg, &oidArg, 0);
 		repo->unlockRepository();
 
 		if(res != GIT_SUCCESS) {
@@ -1273,11 +1273,11 @@ void Repository::EIO_CreateOidRef(eio_req *req) {
 
 	// Ignoring the result of this, as we know it's definitely a good oid.
 	git_oid oid;
-	git_oid_mkstr(&oid, reqData->target->c_str());
+	git_oid_fromstr(&oid, reqData->target->c_str());
 
 	git_reference *ref;
 	reqData->error = git_reference_create_oid(&ref, reqData->repo->repo_,
-			reqData->name->c_str(), &oid);
+			reqData->name->c_str(), &oid, 0);
 
 	reqData->repo->unlockRepository();
 

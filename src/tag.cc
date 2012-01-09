@@ -145,14 +145,13 @@ Handle<Value> Tag::SaveObject(Handle<Object> tagObject, Repository *repo,
 
 	git_object* targetObj;
 	git_oid targetOid;
-	git_oid_mkstr(&targetOid, *targetId);
+	git_oid_fromstr(&targetOid, *targetId);
 	result = git_object_lookup(&targetObj, repo->repo_, &targetOid, GIT_OBJ_ANY);
 	if(result != GIT_SUCCESS) {
 		THROW_GIT_ERROR("Couldn't find target object.", result);
 	}
 
 	git_otype targetType = git_object_type(targetObj);
-	git_object_close(targetObj);
 
 	git_signature *tagger = GetSignatureFromProperty(tagObject, tagger_symbol);
 	if(tagger == NULL) {
@@ -193,8 +192,9 @@ Handle<Value> Tag::SaveObject(Handle<Object> tagObject, Repository *repo,
 		repo->lockRepository();
 
 		git_oid newId;
-		result = git_tag_create(&newId, repo->repo_, *name, &targetOid,
-				targetType, tagger, *message);
+		result = git_tag_create(&newId, repo->repo_, *name, targetObj,
+				tagger, *message, 0);
+		git_object_close(targetObj);
 		repo->unlockRepository();
 
 		git_signature_free(tagger);
@@ -241,11 +241,17 @@ Handle<Value> Tag::Save(const Arguments& args) {
 void Tag::EIO_Save(eio_req *req) {
 	save_request *reqData = static_cast<save_request*>(req->data);
 
+	git_object* targetObj;
+	// TODO: The return value from this function should be checked to handle
+	//       failures gracefully.
+	int result = git_object_lookup(&targetObj, reqData->repo->repo_, &reqData->targetId, GIT_OBJ_ANY);
+
 	git_oid newId;
 	reqData->repo->lockRepository();
 	reqData->error = git_tag_create(&newId, reqData->repo->repo_, reqData->name->c_str(),
-			&reqData->targetId, reqData->targetType, reqData->tagger,
-			reqData->message->c_str());
+			targetObj, reqData->tagger,
+			reqData->message->c_str(), 0);
+	git_object_close(targetObj);
 	reqData->repo->unlockRepository();
 
 	if(reqData->error == GIT_SUCCESS) {

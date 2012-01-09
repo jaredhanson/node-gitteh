@@ -107,6 +107,8 @@ Handle<Value> Commit::SaveObject(Handle<Object> commitObject, Repository *repo,
 	int result, parentCount, i;
 	git_oid treeId;
 	git_oid *parentIds;
+	git_tree *tree;
+	git_commit **parentCommits;
 
 	HandleScope scope;
 
@@ -137,9 +139,13 @@ Handle<Value> Commit::SaveObject(Handle<Object> commitObject, Repository *repo,
 	}
 
 	treeId;
-	result = git_oid_mkstr(&treeId, *treeIdStr);
+	result = git_oid_fromstr(&treeId, *treeIdStr);
 	if(result != GIT_SUCCESS) {
 		THROW_ERROR("Tree ID is invalid.");
+	}
+	git_tree_lookup(&tree, repo->repo_, &treeId);
+	if(result != GIT_SUCCESS) {
+		THROW_ERROR("Tree lookup failed.");
 	}
 
 	Handle<Array> parents;
@@ -165,11 +171,16 @@ Handle<Value> Commit::SaveObject(Handle<Object> commitObject, Repository *repo,
 
 	parentCount = parents->Length();
 	parentIds = new git_oid[parentCount];
+	parentCommits = (git_commit **)malloc(parentCount * sizeof(git_commit*));
 	for(i = 0; i < parentCount; i++) {
-		result = git_oid_mkstr(&parentIds[i], *String::Utf8Value(parents->Get(i)));
+		result = git_oid_fromstr(&parentIds[i], *String::Utf8Value(parents->Get(i)));
 		if(result != GIT_SUCCESS) {
 			delete [] parentIds;
 			THROW_ERROR("Parent id is invalid.");
+		}
+		git_commit_lookup(&parentCommits[i], repo->repo_, &parentIds[i]);
+		if(result != GIT_SUCCESS) {
+			THROW_ERROR("Commit lookup failed.");
 		}
 	}
 
@@ -224,11 +235,12 @@ Handle<Value> Commit::SaveObject(Handle<Object> commitObject, Repository *repo,
 			parentIdsPtr[i] = &parentIds[i];
 		}
 		result = git_commit_create(&newId, repo->repo_, NULL, author, committer,
-				*message, &treeId, parentCount, parentIdsPtr);
+				NULL, *message, tree, parentCount, (const git_commit**)parentCommits);
 
 		git_signature_free(author);
 		git_signature_free(committer);
 		delete [] parentIdsPtr;
+		free(parentCommits);
 		delete [] parentIds;
 
 		if(result != GIT_SUCCESS) {
@@ -270,17 +282,26 @@ Handle<Value> Commit::Save(const Arguments& args) {
 void Commit::EIO_Save(eio_req *req) {
 	save_commit_request *reqData = static_cast<save_commit_request*>(req->data);
 
+	git_tree *tree;
+	git_commit **parentCommits;
+
+	// TODO: The return value from this function should be checked to handle
+	//       failures gracefully.
+	git_tree_lookup(&tree, reqData->repo->repo_, &reqData->treeId);
+
+	parentCommits = (git_commit **)malloc(reqData->parentCount * sizeof(git_commit*));
 	const git_oid **parentIdsPtr;
 	parentIdsPtr = new const git_oid*[reqData->parentCount];
 	for(int i = 0; i < reqData->parentCount; i++) {
+		git_commit_lookup(&parentCommits[i], reqData->repo->repo_, &reqData->parentIds[i]);
 		parentIdsPtr[i] = &reqData->parentIds[i];
 	}
 
 	git_oid newId;
 	reqData->repo->lockRepository();
 	reqData->error = git_commit_create(&newId, reqData->repo->repo_, NULL,
-			reqData->author, reqData->committer, reqData->message->c_str(),
-			&reqData->treeId, reqData->parentCount, parentIdsPtr);
+			reqData->author, reqData->committer, NULL, reqData->message->c_str(),
+			tree, reqData->parentCount, (const git_commit**)parentCommits);
 	reqData->repo->unlockRepository();
 
 	if(reqData->error == GIT_SUCCESS) {
@@ -288,6 +309,7 @@ void Commit::EIO_Save(eio_req *req) {
 	}
 
 	delete [] parentIdsPtr;
+	free(parentCommits);
 	delete reqData->message;
 	delete [] reqData->parentIds;
 	git_signature_free(reqData->committer);
@@ -319,7 +341,7 @@ int Commit::EIO_AfterSave(eio_req *req) {
 		}
 		else {
 			git_oid oid;
-			git_oid_mkstr(&oid, reqData->id);
+			git_oid_fromstr(&oid, reqData->id);
 			reqData->commit->updateCachedRef(&oid);
 
 			reqData->commit->handle_->ForceSet(id_symbol, String::New(reqData->id, 40),
