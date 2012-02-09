@@ -265,7 +265,6 @@ void Reference::EIO_Delete(eio_req *req) {
 		reqData->ref->repository_->unlockRepository();
 
 		if(reqData->error == GIT_SUCCESS) {
-			reqData->ref->repository_->referenceCache_->remove(reqData->ref->ref_);
 			reqData->ref->deleted_ = true;
 		}
 
@@ -287,6 +286,7 @@ int Reference::EIO_AfterDelete(eio_req *req) {
  		callbackArgs[1] = Null();
 	}
 	else {
+		reqData->ref->repository_->referenceCache_->remove(reqData->ref->ref_);
  		callbackArgs[0] = Undefined();
  		callbackArgs[1] = True();
 	}
